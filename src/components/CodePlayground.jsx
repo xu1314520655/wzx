@@ -217,6 +217,35 @@ export default function CodePlayground({ courseId, lessonId }) {
     }
   }, []);
 
+  // 自动修复常见 Python 语法错误
+  const fixCommonSyntaxErrors = (pythonCode) => {
+    let fixed = pythonCode;
+    // 修复 print(" 换行问题：将 print("\n... 或 print("\n 合并为一行
+    fixed = fixed.replace(/print\("\s*\n/g, 'print("');
+    // 修复未闭合的字符串跨行（简单情况）
+    const lines = fixed.split('\n');
+    const result = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      // 检测 print(" 后面直接换行的情况
+      const match = line.match(/^(\s*print\(")([^"]*)$/);
+      if (match && i + 1 < lines.length) {
+        const indent = match[1];
+        const nextLine = lines[i + 1].trim();
+        // 合并到下一行找到闭合引号
+        if (nextLine.includes('"')) {
+          result.push(indent + match[2] + nextLine);
+          i += 2;
+          continue;
+        }
+      }
+      result.push(line);
+      i++;
+    }
+    return result.join('\n');
+  };
+
   const runCode = useCallback(async () => {
     setIsRunning(true);
     setOutput('');
@@ -224,17 +253,23 @@ export default function CodePlayground({ courseId, lessonId }) {
     setPlotImages([]);
     setIsCompleted(false);
 
+    // 自动修复代码中的常见语法错误
+    const fixedCode = fixCommonSyntaxErrors(code);
+    if (fixedCode !== code) {
+      setCode(fixedCode);
+    }
+
     try {
       if (pyodideStatus === 'ready' && pyodideInstance) {
         // 真实 Python 执行模式
-        await executeWithPyodide(code);
+        await executeWithPyodide(fixedCode);
       } else if (pyodideStatus === 'loading') {
         setOutput('⏳ Python 环境正在加载中，请稍候...');
         setIsRunning(false);
         return;
       } else {
         // 降级到模拟模式
-        executeSimulated(code);
+        executeSimulated(fixedCode);
       }
     } catch (err) {
       setError(err.message);
